@@ -1,41 +1,8 @@
 import React from 'react';
-import { useQuery, gql } from '@apollo/client';
-import { useAuth } from '../utils/AuthContext';
+import { gql, useQuery } from '@apollo/client';
 
-// Recharts
-import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line
-} from 'recharts';
-
-// Icons (lucide-react)
-import {
-  LogOut,
-  Award,
-  TrendingUp,
-  Clock,
-  Activity
-} from 'lucide-react';
-
-/**
- * UPDATED GraphQL query:
- *  The user, transaction, and progress relationships must exist in your Hasura schema
- *  under the 'user' table. If you see them in your introspection or relationships,
- *  it will work. If not, adjust the field names accordingly (e.g. "transactions" might
- *  be "transaction" or "xp_transaction"). 
- */
-const GET_USER_DATA = gql`
-  query GetUserData {
+const BASIC_INFO_QUERY = gql`
+  query {
     user {
       id
       login
@@ -43,42 +10,318 @@ const GET_USER_DATA = gql`
       lastName
       email
       campus
+    }
+  }
+`;
 
-      # Transactions: Filter to XP type, ordered by ascending creation date
-      transactions(where: { type: { _eq: "xp" } }, order_by: { createdAt: asc }) {
-        amount
-        createdAt
-        path
+const LAST_PROJECTS_QUERY = gql`
+  query {
+    transaction(
+      where: {
+        type: { _eq: "xp" }
+        _and: [
+          { path: { _like: "/bahrain/bh-module%" } }
+          { path: { _nlike: "/bahrain/bh-module/checkpoint%" } }
+          { path: { _nlike: "/bahrain/bh-module/piscine%" } }
+        ]
       }
-
-      # Recent progress (limit 5) - adjust the 'progresses' field name if needed
-      progresses(order_by: { createdAt: desc }, limit: 5) {
-        grade
-        createdAt
-        object {
-          name
-        }
-      }
-
-      # Full progress list for stats
-      allProgresses: progresses(order_by: { createdAt: asc }) {
-        grade
-        createdAt
-        path
+      order_by: { createdAt: desc }
+      limit: 4
+    ) {
+      object {
+        type
+        name
       }
     }
   }
 `;
 
-/**
- * Profile Component:
- *  Displays user info, XP, recent projects, and various charts using Recharts
- */
-export default function Profile() {
-  const { logout } = useAuth();
-  const { loading, error, data } = useQuery(GET_USER_DATA);
+const XP_QUERY = gql`
+  query xpAggregate($userId: Int!) {
+    transaction_aggregate(
+      where: {
+        event: { path: { _eq: "/bahrain/bh-module" } }
+        type: { _eq: "xp" }
+        userId: { _eq: $userId }
+      }
+    ) {
+      aggregate {
+        sum {
+          amount
+        }
+      }
+    }
+  }
+`;
 
-  if (loading) {
+const AUDIT_RATIO_QUERY = gql`
+  query {
+    user {
+      totalUp
+      totalDown
+      auditRatio
+    }
+  }
+`;
+
+const SKILLS_QUERY = gql`
+  query {
+    user {
+      transactions(
+        where: { type: { _ilike: "%skill%" } }
+        order_by: { amount: desc }
+      ) {
+        type
+        amount
+      }
+    }
+  }
+`;
+
+const TECH_SKILLS_QUERY = gql`
+  query {
+    user {
+      transactions(where: { type: { _ilike: "%skill%" } }) {
+        type
+        amount
+      }
+    }
+  }
+`;
+
+function SkillsRadar({ skills }) {
+  if (!skills || skills.length === 0) {
+    return <p style={styles.infoText}>No skills data available.</p>;
+  }
+
+  const size = 320;
+  const centerX = size / 2;
+  const centerY = size / 2;
+  const radius = size * 0.3;
+  const maxAmount = Math.max(...skills.map((s) => s.amount));
+
+  const points = skills.map((skill, i) => {
+    const angle = (i * 2 * Math.PI) / skills.length - Math.PI / 2;
+    const value = (skill.amount / maxAmount) * radius;
+    return {
+      x: centerX + value * Math.cos(angle),
+      y: centerY + value * Math.sin(angle),
+      label: skill.type.replace("skill_", ""),
+      amount: skill.amount,
+    };
+  });
+
+  const polygonPath =
+    points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z";
+
+  const circles = [0.2, 0.4, 0.6, 0.8, 1].map((scale) => (
+    <circle
+      key={scale}
+      cx={centerX}
+      cy={centerY}
+      r={radius * scale}
+      fill="none"
+      stroke="#D1D5DB"
+      strokeWidth="1"
+    />
+  ));
+
+  const lines = points.map((_, i) => {
+    const angle = (i * 2 * Math.PI) / skills.length - Math.PI / 2;
+    return (
+      <line
+        key={i}
+        x1={centerX}
+        y1={centerY}
+        x2={centerX + radius * Math.cos(angle)}
+        y2={centerY + radius * Math.sin(angle)}
+        stroke="#D1D5DB"
+        strokeWidth="1"
+      />
+    );
+  });
+
+  const skillPoints = points.map((p, i) => (
+    <circle key={i} cx={p.x} cy={p.y} r="4" fill="#F97316" />
+  ));
+
+  const labels = points.map((p, i) => {
+    const angle = (i * 2 * Math.PI) / skills.length - Math.PI / 2;
+    const labelRadius = radius + 30;
+    const labelX = centerX + labelRadius * Math.cos(angle);
+    const labelY = centerY + labelRadius * Math.sin(angle);
+    let textAnchor = "start";
+    if (angle < -Math.PI / 2 || angle > Math.PI / 2) {
+      textAnchor = "end";
+    } else if (Math.abs(angle) === Math.PI / 2) {
+      textAnchor = "middle";
+    }
+    return (
+      <text
+        key={i}
+        x={labelX}
+        y={labelY}
+        textAnchor={textAnchor}
+        style={styles.radarLabel}
+        dominantBaseline="middle"
+      >
+        {p.label}
+      </text>
+    );
+  });
+
+  return (
+    <div style={styles.radarContainer}>
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        style={styles.radarSvg}
+      >
+        {circles}
+        {lines}
+        <path
+          d={polygonPath}
+          fill="rgba(249,115,22,0.2)"
+          stroke="#F97316"
+          strokeWidth="2"
+        />
+        {skillPoints}
+        {labels}
+      </svg>
+      <div style={styles.radarValues}>
+        {skills.map((skill, idx) => (
+          <div key={idx} style={{ fontSize: "0.9rem", marginBottom: "4px" }}>
+            <strong>{skill.type.replace("skill_", "")}</strong>: {skill.amount}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TechSkillsBarChart({ skills }) {
+  if (!skills || skills.length === 0) {
+    return <p style={styles.infoText}>No tech skills available.</p>;
+  }
+
+  const totalHeight = 300;
+  const barWidth = 40;
+  const gap = 20;
+  const maxBarHeight = 200;
+  const maxAmount = Math.max(...skills.map((s) => s.amount), 1);
+  const scale = maxBarHeight / maxAmount;
+  const svgWidth = skills.length * (barWidth + gap);
+
+  return (
+    <div style={styles.barContainer}>
+      <svg
+        width={svgWidth}
+        height={totalHeight}
+        viewBox={`0 0 ${svgWidth} ${totalHeight}`}
+        style={styles.barSvg}
+      >
+        {skills.map((skill, i) => {
+          const barHeight = skill.amount * scale;
+          const barX = i * (barWidth + gap);
+          const barY = 20 + (maxBarHeight - barHeight);
+
+          return (
+            <g key={i}>
+              <rect
+                x={barX}
+                y={barY}
+                width={barWidth}
+                height={barHeight}
+                fill="#8B5CF6"
+                rx="3"
+              />
+              <text
+                x={barX + barWidth / 2}
+                y={barY - 5}
+                textAnchor="middle"
+                fill="#111827"
+                fontSize="13"
+                fontWeight="bold"
+              >
+                {skill.amount}
+              </text>
+              <text
+                x={barX + barWidth / 2}
+                y={maxBarHeight + 35}
+                textAnchor="middle"
+                fill="#111827"
+                fontSize="12"
+              >
+                {skill.skill}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function Profile() {
+  const {
+    data: basicInfoData,
+    loading: basicInfoLoading,
+    error: basicInfoError,
+  } = useQuery(BASIC_INFO_QUERY);
+
+  const {
+    data: lastProjectsData,
+    loading: lastProjectsLoading,
+    error: lastProjectsError,
+  } = useQuery(LAST_PROJECTS_QUERY);
+
+  const userId = parseInt(basicInfoData?.user?.[0]?.id || 0, 10);
+
+  const {
+    data: xpData,
+    loading: xpLoading,
+    error: xpError,
+  } = useQuery(XP_QUERY, {
+    variables: { userId },
+    skip: !userId,
+  });
+
+  const {
+    data: auditData,
+    loading: auditLoading,
+    error: auditError,
+  } = useQuery(AUDIT_RATIO_QUERY);
+
+  const {
+    data: skillsData,
+    loading: skillsLoading,
+    error: skillsError,
+  } = useQuery(SKILLS_QUERY);
+
+  const {
+    data: techSkillsData,
+    loading: techLoading,
+    error: techError,
+  } = useQuery(TECH_SKILLS_QUERY);
+
+  const isLoading =
+    basicInfoLoading ||
+    lastProjectsLoading ||
+    xpLoading ||
+    auditLoading ||
+    skillsLoading ||
+    techLoading;
+
+  const anyError =
+    basicInfoError ||
+    lastProjectsError ||
+    xpError ||
+    auditError ||
+    skillsError ||
+    techError;
+
+  if (isLoading) {
     return (
       <div style={styles.centeredScreen}>
         <div style={styles.loadingText}>Loading...</div>
@@ -86,297 +329,187 @@ export default function Profile() {
     );
   }
 
-  if (error) {
+  if (anyError) {
     return (
       <div style={styles.centeredScreen}>
-        <div style={styles.errorText}>Error loading data</div>
+        <div style={styles.errorText}>
+          Error:{" "}
+          {basicInfoError?.message ||
+            lastProjectsError?.message ||
+            xpError?.message ||
+            auditError?.message ||
+            skillsError?.message ||
+            techError?.message ||
+            "Unknown error"}
+        </div>
       </div>
     );
   }
 
-  // Safely extract the first user
-  const user = data?.user?.[0];
-  if (!user) return null;
+  const user = basicInfoData?.user?.[0] || {};
+  const projects = lastProjectsData?.transaction || [];
+  const totalXP = xpData?.transaction_aggregate?.aggregate?.sum?.amount || 0;
+  const { totalUp = 0, totalDown = 0 } = auditData?.user?.[0] || {};
 
-  //-----------------------
-  //   DATA PROCESSING
-  //-----------------------
-
-  // 1) XP Data (AreaChart)
-  const xpData = (user.transactions || []).map((tx) => ({
-    date: new Date(tx.createdAt).toLocaleDateString(),
-    xp: tx.amount,
-  }));
-  const totalXP = xpData.reduce((sum, item) => sum + item.xp, 0);
-
-  // 2) Audit Stats (pass/fail among allProgresses)
-  const passedAudits = (user.allProgresses || []).filter((p) => p.grade > 0).length;
-  const totalAudits = (user.allProgresses || []).length;
-  const auditRatio = totalAudits
-    ? ((passedAudits / totalAudits) * 100).toFixed(1)
-    : 0;
-
-  // 3) Learning Hours
-  const learningHours = Math.round(totalXP / 1000);
-
-  // 4) Recent Projects (limit 5)
-  const recentProjects = (user.progresses || []).map((prog) => ({
-    name: prog?.object?.name || 'Unnamed Project',
-    createdAt: new Date(prog.createdAt).toLocaleDateString(),
-    grade: prog.grade,
-  }));
-
-  // 5) Grade Over Time (LineChart)
-  const gradeOverTimeData = (user.allProgresses || []).map((p) => ({
-    date: new Date(p.createdAt).toLocaleDateString(),
-    grade: p.grade,
-  }));
-
-  // 6) XP by Path (PieChart)
-  const xpByPathMap = {};
-  (user.transactions || []).forEach((tx) => {
-    // Example path structure: "/path/to/something"
-    // Adjust indexing if yours is different
-    const segments = tx.path ? tx.path.split('/') : [];
-    const mainSegment = segments[2] || 'unknown';
-    if (!xpByPathMap[mainSegment]) {
-      xpByPathMap[mainSegment] = 0;
+  const rawSkills = skillsData?.user?.[0]?.transactions || [];
+  const uniqueSkills = rawSkills.reduce((acc, curr) => {
+    if (!acc.some((skill) => skill.type === curr.type)) {
+      acc.push(curr);
     }
-    xpByPathMap[mainSegment] += tx.amount;
-  });
-  const xpByPathData = Object.entries(xpByPathMap).map(([name, value]) => ({
-    name,
-    value,
-  }));
-  const COLORS = ['#6366F1', '#DB2777', '#F97316', '#10B981', '#1D4ED8', '#9333EA'];
+    return acc;
+  }, []);
+  const displayedSkills = uniqueSkills.slice(0, 6);
 
-  //-----------------------
-  //     JSX RENDERING
-  //-----------------------
+  const transactions = techSkillsData?.user?.[0]?.transactions || [];
+  const techKeys = {
+    go: "skill_go",
+    javascript: "skill_js",
+    html: "skill_html",
+    css: "skill_css",
+    unix: "skill_unix",
+    docker: "skill_docker",
+    sql: "skill_sql",
+  };
+  const techSkills = Object.entries(techKeys).map(([key, skillType]) => {
+    const skillObj = transactions.find((t) => t.type === skillType);
+    return {
+      skill: key.toUpperCase(),
+      amount: skillObj ? skillObj.amount : 0,
+    };
+  });
+
+  let xpDisplayValue;
+  let xpUnit;
+  if (totalXP >= 1_000_000) {
+    xpDisplayValue = (totalXP / 1_000_000).toFixed(2);
+    xpUnit = "MB";
+  } else {
+    xpDisplayValue = Math.round(totalXP / 1000);
+    xpUnit = "kB";
+  }
+
+  const ratio = totalDown > 0 ? (totalUp / totalDown).toFixed(1) : "N/A";
+  const upMB = (totalUp / 1_000_000).toFixed(2);
+  const downMB = (totalDown / 1_000_000).toFixed(2);
+  const maxValueAudit = Math.max(totalUp, totalDown, 1);
+
+  // Simple "logout" to redirect to Login.js
+  const handleLogout = () => {
+    window.location.href = "/Login";
+  };
 
   return (
     <div style={styles.root}>
-      {/* NAVIGATION BAR */}
       <nav style={styles.navbar}>
         <div style={styles.navWrapper}>
           <div style={styles.brandContainer}>
-            <Activity style={styles.brandIcon} />
-            <span style={styles.brandText}>Learning Analytics</span>
+            <div style={styles.brandIconPlaceholder}>R</div>
+            <span style={styles.brandText}>reboot01</span>
           </div>
-          <div style={styles.userInfoContainer}>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: 0, fontWeight: 500 }}>{user.login}</p>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-                ID: {user.id}
-              </p>
-            </div>
-            <button onClick={logout} style={styles.logoutBtn}>
-              <LogOut size={18} />
-              <span>Logout</span>
+          <div style={styles.navRight}>
+            <button style={styles.logoutBtn} onClick={handleLogout}>
+              Logout
             </button>
           </div>
         </div>
       </nav>
 
-      {/* MAIN CONTENT */}
       <main style={styles.main}>
         <div style={styles.container}>
-          {/* Welcome header */}
-          <div style={styles.welcomeSection}>
-            <h1 style={styles.welcomeTitle}>Welcome back, {user.login}!</h1>
-            <p style={styles.welcomeSubtitle}>
-              Here&apos;s your learning progress overview
-            </p>
+          <div style={styles.titleSection}>
+            <h1 style={styles.title}>Welcome, {user.login || "User"}!</h1>
+            <p style={styles.subtitle}>Here’s your profile overview</p>
           </div>
 
-          {/* USER INFO CARD */}
-          <div style={styles.userInfoCard}>
-            <h2 style={styles.userInfoTitle}>User Info</h2>
-            <div style={styles.userInfoGrid}>
-              <div style={styles.userInfoItem}>
-                <strong>ID:</strong> {user.id}
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>User Basic Info</h2>
+            <div style={styles.infoGrid}>
+              <div style={styles.infoItem}>
+                <strong>ID:</strong> {user.id ?? "N/A"}
               </div>
-              <div style={styles.userInfoItem}>
-                <strong>First Name:</strong> {user.firstName || 'N/A'}
+              <div style={styles.infoItem}>
+                <strong>Login:</strong> {user.login ?? "N/A"}
               </div>
-              <div style={styles.userInfoItem}>
-                <strong>Last Name:</strong> {user.lastName || 'N/A'}
+              <div style={styles.infoItem}>
+                <strong>First Name:</strong> {user.firstName ?? "N/A"}
               </div>
-              <div style={styles.userInfoItem}>
-                <strong>Email:</strong> {user.email || 'N/A'}
+              <div style={styles.infoItem}>
+                <strong>Last Name:</strong> {user.lastName ?? "N/A"}
               </div>
-              <div style={styles.userInfoItem}>
-                <strong>Campus:</strong> {user.campus || 'N/A'}
+              <div style={styles.infoItem}>
+                <strong>Email:</strong> {user.email ?? "N/A"}
               </div>
-            </div>
-          </div>
-
-          {/* STATS GRID */}
-          <div style={styles.statsGrid}>
-            {/* Total XP */}
-            <div style={styles.statsCard}>
-              <div style={styles.statsCardInner}>
-                <div style={styles.statsCardIcon}>
-                  <TrendingUp style={{ color: '#fff' }} />
-                </div>
-                <div>
-                  <p style={styles.statsCardLabel}>Total XP</p>
-                  <p style={styles.statsCardValue}>{totalXP.toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Learning Hours */}
-            <div style={styles.statsCard}>
-              <div style={styles.statsCardInner}>
-                <div style={styles.statsCardIcon}>
-                  <Clock style={{ color: '#fff' }} />
-                </div>
-                <div>
-                  <p style={styles.statsCardLabel}>Learning Hours</p>
-                  <p style={styles.statsCardValue}>{learningHours}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Audit Ratio */}
-            <div style={styles.statsCard}>
-              <div style={styles.statsCardInner}>
-                <div style={styles.statsCardIcon}>
-                  <Award style={{ color: '#fff' }} />
-                </div>
-                <div>
-                  <p style={styles.statsCardLabel}>Audit Stats</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                    <span><strong>Pass:</strong> {passedAudits}</span>
-                    <span><strong>Total:</strong> {totalAudits}</span>
-                    <span><strong>Ratio:</strong> {auditRatio}%</span>
-                  </div>
-                </div>
+              <div style={styles.infoItem}>
+                <strong>Campus:</strong> {user.campus ?? "N/A"}
               </div>
             </div>
           </div>
 
-          {/* RECENT PROJECTS (limit 5) */}
-          <div style={styles.recentProjectsCard}>
-            <h2 style={styles.chartTitle}>Recent Projects</h2>
-            {recentProjects.length === 0 ? (
-              <p>No recent projects found</p>
-            ) : (
-              <ul style={styles.recentProjectList}>
-                {recentProjects.map((proj, i) => (
-                  <li key={i} style={styles.recentProjectItem}>
-                    <strong>{proj.name}</strong>
-                    <span style={styles.projectMeta}>
-                      (Grade: {proj.grade}, {proj.createdAt})
-                    </span>
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Last Projects</h2>
+            {projects.length > 0 ? (
+              <ul style={styles.projectList}>
+                {projects.map((proj, idx) => (
+                  <li key={idx} style={styles.projectItem}>
+                    {proj.object?.name || "Unknown"}
                   </li>
                 ))}
               </ul>
+            ) : (
+              <p style={styles.infoText}>No recent projects found.</p>
             )}
           </div>
 
-          {/* CHARTS GRID */}
-          <div style={styles.chartsGrid}>
-            {/* XP Progress (AreaChart) */}
-            <div style={styles.chartCardWide}>
-              <h2 style={styles.chartTitle}>XP Progress</h2>
-              <div style={{ height: '300px', width: '100%' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={xpData}>
-                    <defs>
-                      <linearGradient id="colorXp" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366F1" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#ccc" strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#fff',
-                        border: '1px solid #ccc',
-                        borderRadius: '6px'
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="xp"
-                      stroke="#6366F1"
-                      fill="url(#colorXp)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Grade Over Time (LineChart) */}
-            <div style={styles.chartCard}>
-              <h2 style={styles.chartTitle}>Grade Over Time</h2>
-              <div style={{ height: '300px', width: '100%' }}>
-                {gradeOverTimeData.length === 0 ? (
-                  <p style={{ textAlign: 'center' }}>No grade data found</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={gradeOverTimeData}>
-                      <CartesianGrid stroke="#ccc" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#fff',
-                          border: '1px solid #ccc',
-                          borderRadius: '6px'
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="grade"
-                        stroke="#F97316"
-                        strokeWidth={3}
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>XP</h2>
+            <div style={styles.xpWrapper}>
+              <div style={styles.xpValue}>{xpDisplayValue}</div>
+              <div style={styles.xpUnit}>{xpUnit}</div>
             </div>
           </div>
 
-          {/* XP by Path (PieChart) */}
-          <div style={styles.chartCard}>
-            <h2 style={styles.chartTitle}>XP by Path</h2>
-            <div style={{ height: '300px', width: '100%' }}>
-              {xpByPathData.length === 0 ? (
-                <p style={{ textAlign: 'center' }}>No XP path data found</p>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={xpByPathData}
-                      dataKey="value"
-                      nameKey="name"
-                      outerRadius={100}
-                      fill="#6366F1"
-                      label={({ name, value }) => `${name} (${value})`}
-                    >
-                      {xpByPathData.map((_entry, i) => (
-                        <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#fff',
-                        border: '1px solid #ccc',
-                        borderRadius: '6px'
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Audit Ratio</h2>
+            <div style={styles.auditWrapper}>
+              <div style={styles.auditBlock}>
+                <p style={styles.auditLabel}>
+                  Done: <span style={{ color: "#2563EB" }}>{upMB} MB</span>
+                </p>
+                <div style={styles.auditBarBg}>
+                  <div
+                    style={{
+                      ...styles.auditBarFill,
+                      width: `${(totalUp / maxValueAudit) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={styles.auditBlock}>
+                <p style={styles.auditLabel}>
+                  Received:{" "}
+                  <span style={{ color: "#2563EB" }}>{downMB} MB</span>
+                </p>
+                <div style={styles.auditBarBg}>
+                  <div
+                    style={{
+                      ...styles.auditBarFill,
+                      width: `${(totalDown / maxValueAudit) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={styles.auditRatioText}>Ratio: {ratio}</div>
             </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Skills Radar</h2>
+            <SkillsRadar skills={displayedSkills} />
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Tech Skills Bar Chart</h2>
+            <TechSkillsBarChart skills={techSkills} />
           </div>
         </div>
       </main>
@@ -384,211 +517,226 @@ export default function Profile() {
   );
 }
 
+export default Profile;
+
 const styles = {
   root: {
-    minHeight: '100vh',
-    backgroundColor: '#f8fafc',
+    minHeight: "100vh",
+    backgroundColor: "#FAFAFA",
     fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
-    color: '#111'
+    color: "#111",
   },
   centeredScreen: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f8fafc'
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAFAFA",
   },
   loadingText: {
-    fontSize: '24px',
-    color: '#555',
-    opacity: 0.8,
-    animation: 'pulse 2s infinite'
+    fontSize: "24px",
+    color: "#555",
   },
   errorText: {
-    fontSize: '24px',
-    color: 'red'
+    fontSize: "18px",
+    color: "#DC2626",
+    textAlign: "center",
+    padding: "1rem",
   },
   navbar: {
-    position: 'fixed',
+    position: "fixed",
     top: 0,
-    width: '100%',
-    backgroundColor: '#fff',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    borderBottom: '1px solid #e2e8f0',
+    width: "100%",
+    backgroundColor: "#FFF",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    borderBottom: "1px solid #E5E7EB",
     zIndex: 50,
-    height: '64px',
-    display: 'flex',
-    alignItems: 'center'
+    height: "64px",
+    display: "flex",
+    alignItems: "center",
   },
   navWrapper: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '0 1rem',
-    width: '100%',
-    display: 'flex',
-    justifyContent: 'space-between'
+    maxWidth: "1200px",
+    margin: "0 auto",
+    padding: "0 1rem",
+    width: "100%",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   brandContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem'
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
   },
-  brandIcon: {
-    width: '32px',
-    height: '32px',
-    color: '#6b21a8'
+  brandIconPlaceholder: {
+    width: "32px",
+    height: "32px",
+    backgroundColor: "#06B6D4",
+    borderRadius: "50%",
+    color: "#FFF",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "bold",
+    fontSize: "1rem",
   },
   brandText: {
-    fontSize: '1.25rem',
-    fontWeight: 'bold',
-    background: 'linear-gradient(90deg, #6b21a8, #6366F1)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent'
+    fontSize: "1.25rem",
+    fontWeight: "bold",
+    background: "linear-gradient(90deg, #06B6D4, #9333EA)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
   },
-  userInfoContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem'
+  navRight: {
+    display: "flex",
+    alignItems: "center",
   },
   logoutBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    background: 'linear-gradient(90deg, #ef4444, #ec4899)',
-    color: '#fff',
-    border: 'none',
-    padding: '0.6rem 1rem',
-    borderRadius: '8px',
-    cursor: 'pointer'
+    backgroundColor: "#EF4444",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    padding: "0.5rem 1rem",
+    fontWeight: "500",
+    fontSize: "0.9rem",
   },
   main: {
-    paddingTop: '80px',
-    paddingBottom: '1rem'
+    paddingTop: "80px",
+    paddingBottom: "1rem",
   },
   container: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '0 1rem'
+    maxWidth: "1024px",
+    margin: "0 auto",
+    padding: "0 1rem",
   },
-  welcomeSection: {
-    textAlign: 'center',
-    marginBottom: '2rem'
+  titleSection: {
+    textAlign: "center",
+    marginBottom: "2rem",
   },
-  welcomeTitle: {
-    fontSize: '2rem',
-    fontWeight: 'bold',
+  title: {
+    fontSize: "2rem",
+    fontWeight: "bold",
     margin: 0,
-    color: '#1e293b'
+    color: "#374151",
   },
-  welcomeSubtitle: {
-    marginTop: '0.5rem',
-    color: '#475569'
+  subtitle: {
+    marginTop: "0.5rem",
+    color: "#6B7280",
   },
-  userInfoCard: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-    border: '1px solid #e2e8f0',
-    padding: '1rem',
-    marginBottom: '2rem'
+  card: {
+    backgroundColor: "#F3F4F6",
+    borderRadius: "12px",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+    border: "1px solid #E5E7EB",
+    padding: "1rem",
+    marginBottom: "2rem",
   },
-  userInfoTitle: {
-    fontSize: '1.25rem',
-    margin: '0 0 1rem',
-    color: '#1e293b',
-    textAlign: 'center'
+  cardTitle: {
+    fontSize: "1.25rem",
+    margin: "0 0 1rem",
+    color: "#1F2937",
+    textAlign: "center",
   },
-  userInfoGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-    gap: '0.5rem'
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+    gap: "0.75rem",
   },
-  userInfoItem: {
-    fontSize: '1rem',
-    padding: '0.5rem 0'
+  infoItem: {
+    fontSize: "0.95rem",
+    border: "1px solid #E5E7EB",
+    borderRadius: "8px",
+    padding: "0.5rem",
+    backgroundColor: "#fff",
   },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: '1rem',
-    marginBottom: '2rem'
-  },
-  statsCard: {
-    transition: 'transform 0.2s'
-  },
-  statsCardInner: {
-    background: 'linear-gradient(135deg, #6b21a8, #4c1d95)',
-    borderRadius: '12px',
-    boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-    padding: '1rem',
-    color: '#fff',
-    display: 'flex',
-    gap: '1rem',
-    alignItems: 'center'
-  },
-  statsCardIcon: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: '8px',
-    padding: '0.5rem',
-    backdropFilter: 'blur(2px)'
-  },
-  statsCardLabel: {
-    margin: 0,
-    opacity: 0.8
-  },
-  statsCardValue: {
-    margin: 0,
-    fontSize: '1.5rem',
-    fontWeight: 'bold'
-  },
-  recentProjectsCard: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-    border: '1px solid #e2e8f0',
-    padding: '1rem',
-    marginBottom: '2rem'
-  },
-  recentProjectList: {
-    listStyle: 'none',
+  projectList: {
+    listStyle: "none",
     padding: 0,
-    margin: 0
+    margin: 0,
   },
-  recentProjectItem: {
-    marginBottom: '0.5rem'
+  projectItem: {
+    margin: "0.5rem 0",
+    padding: "0.5rem",
+    border: "1px solid #E5E7EB",
+    borderRadius: "8px",
+    backgroundColor: "#fff",
   },
-  projectMeta: {
-    marginLeft: '0.5rem',
-    color: '#666',
-    fontSize: '0.9rem'
+  infoText: {
+    margin: "0.5rem 0",
+    color: "#6B7280",
   },
-  chartsGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr',
-    gap: '1rem',
-    marginBottom: '2rem'
+  xpWrapper: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
   },
-  chartCardWide: {
-    gridColumn: '1 / -1',
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-    padding: '1rem',
-    border: '1px solid #e2e8f0',
-    marginBottom: '1rem'
+  xpValue: {
+    fontSize: "2rem",
+    fontWeight: "bold",
+    color: "#EC4899",
   },
-  chartCard: {
-    backgroundColor: '#fff',
-    borderRadius: '12px',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-    padding: '1rem',
-    border: '1px solid #e2e8f0',
-    marginBottom: '1rem'
+  xpUnit: {
+    fontSize: "0.9rem",
+    color: "#6B7280",
   },
-  chartTitle: {
-    fontSize: '1.25rem',
-    margin: '0 0 1rem',
-    color: '#1e293b',
-    textAlign: 'center'
-  }
+  auditWrapper: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "1rem",
+  },
+  auditBlock: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  auditLabel: {
+    margin: "0 0 0.25rem",
+    fontWeight: "500",
+  },
+  auditBarBg: {
+    width: "100%",
+    backgroundColor: "#E5E7EB",
+    borderRadius: "6px",
+    height: "8px",
+    overflow: "hidden",
+  },
+  auditBarFill: {
+    backgroundColor: "#F97316",
+    height: "8px",
+    borderRadius: "6px",
+  },
+  auditRatioText: {
+    fontSize: "1rem",
+    fontWeight: "bold",
+    color: "#F97316",
+    marginTop: "0.5rem",
+  },
+  radarContainer: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: "1rem",
+    alignItems: "flex-start",
+  },
+  radarSvg: {
+    flexShrink: 0,
+  },
+  radarLabel: {
+    fontSize: "0.75rem",
+    fill: "#374151",
+  },
+  radarValues: {
+    display: "flex",
+    flexDirection: "column",
+    fontSize: "0.95rem",
+  },
+  barContainer: {
+    overflowX: "auto",
+    textAlign: "center",
+  },
+  barSvg: {
+    margin: "0 auto",
+    display: "block",
+  },
 };
