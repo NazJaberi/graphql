@@ -67,28 +67,6 @@ Key components include:
 
 ---
 
-## Folder Structure
-
-```
-.
-├── public
-│   └── index.html
-├── src
-│   ├── pages
-│   │   ├── Login.js
-│   │   └── Profile.js
-│   ├── utils
-│   │   ├── AuthContext.js
-│   │   └── apolloClient.js
-│   ├── App.js
-│   ├── index.js
-│   └── ...
-├── package.json
-└── README.md
-```
-
----
-
 ## Getting Started
 
 ### Prerequisites
