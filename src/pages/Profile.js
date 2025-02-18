@@ -1,6 +1,7 @@
 import React from 'react';
 import { gql, useQuery } from '@apollo/client';
-import { useAuth } from '../utils/AuthContext'; // ← Import useAuth
+import { useAuth } from '../utils/AuthContext'; 
+import { useNavigate } from 'react-router-dom'; // ← Import useNavigate
 
 const BASIC_INFO_QUERY = gql`
   query {
@@ -113,7 +114,8 @@ function SkillsRadar({ skills }) {
   });
 
   const polygonPath =
-    points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z";
+    points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") +
+    " Z";
 
   const circles = [0.2, 0.4, 0.6, 0.8, 1].map((scale) => (
     <circle
@@ -265,7 +267,8 @@ function TechSkillsBarChart({ skills }) {
 }
 
 function Profile() {
-  const { logout } = useAuth(); // ← Import logout from the Auth context
+  const { logout } = useAuth();
+  const navigate = useNavigate(); // ← Best fix: useNavigate from react-router
 
   const {
     data: basicInfoData,
@@ -396,10 +399,10 @@ function Profile() {
   const downMB = (totalDown / 1_000_000).toFixed(2);
   const maxValueAudit = Math.max(totalUp, totalDown, 1);
 
-  // Updated "logout" function
+  // Best fix: Use React Router's navigate
   const handleLogout = () => {
-    logout(); // Clear token from localStorage + context
-    window.location.href = "/login";
+    logout(); // Clears token from localStorage + context
+    navigate("/login"); // Navigates with React Router (no 404 on Netlify)
   };
 
   return (
