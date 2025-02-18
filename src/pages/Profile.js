@@ -1,5 +1,6 @@
 import React from 'react';
 import { gql, useQuery } from '@apollo/client';
+import { useAuth } from '../utils/AuthContext'; // ← Import useAuth
 
 const BASIC_INFO_QUERY = gql`
   query {
@@ -264,6 +265,8 @@ function TechSkillsBarChart({ skills }) {
 }
 
 function Profile() {
+  const { logout } = useAuth(); // ← Import logout from the Auth context
+
   const {
     data: basicInfoData,
     loading: basicInfoLoading,
@@ -393,9 +396,10 @@ function Profile() {
   const downMB = (totalDown / 1_000_000).toFixed(2);
   const maxValueAudit = Math.max(totalUp, totalDown, 1);
 
-  // Simple "logout" to redirect to Login.js
+  // Updated "logout" function
   const handleLogout = () => {
-    window.location.href = "/Login";
+    logout(); // Clear token from localStorage + context
+    window.location.href = "/login";
   };
 
   return (
