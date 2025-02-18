@@ -1,70 +1,66 @@
-# Getting Started with Create React App
+# GraphQL React App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This repository contains a React application that uses GraphQL queries to interact with the Reboot01 GraphQL Engine. It includes a login system, protected routes, and a profile page that displays user information, recent projects, XP, and skills visualizations.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Table of Contents
 
-### `npm start`
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Folder Structure](#folder-structure)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Environment Variables](#environment-variables)
+  - [Running Locally](#running-locally)
+- [Authentication Flow](#authentication-flow)
+- [Scripts](#scripts)
+- [Deployment to Netlify](#deployment-to-netlify)
+- [Additional Resources](#additional-resources)
+- [License](#license)
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+---
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Overview
 
-### `npm test`
+This project is a React application bootstrapped with [Create React App](https://create-react-app.dev), which integrates with the Reboot01 platform’s GraphQL API for data retrieval. The app uses an authentication flow that stores a JWT token in local storage and protects certain routes (e.g., the profile page) from unauthenticated users.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Key components include:
+- **Login**: A page where users enter credentials and receive a JWT token if valid.
+- **Profile**: A protected page that fetches user data, XP, skill transactions, and more from the GraphQL API once the user is logged in.
+- **AuthContext**: A custom context to manage the authentication state across the app.
 
-### `npm run build`
+---
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Features
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+1. **Authentication**:  
+   - Login system using `fetch` with Basic Auth.  
+   - Stores JWT token in local storage for subsequent GraphQL requests.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+2. **Protected Routes**:  
+   - Users must be logged in to view the Profile page. Otherwise, they’re redirected to Login.
 
-### `npm run eject`
+3. **GraphQL Queries**:  
+   - Fetch user info, transactions, XP totals, skill data, and more from the Reboot01 GraphQL Engine.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+4. **Data Visualization**:  
+   - Simple radar chart to visualize user skill data.  
+   - Bar chart to display specific tech-skill amounts.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+5. **Logout**:  
+   - Clears token from local storage and redirects users back to the Login page.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+---
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Tech Stack
 
-## Learn More
+- **React** (Create React App)
+- **React Router DOM** (for client-side routing)
+- **Apollo Client** (for GraphQL queries)
+- **Framer Motion** (optional motion/animation)
+- **Lucide-React** and **Recharts** (for icons/charts)
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+---
